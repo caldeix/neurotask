@@ -2,7 +2,7 @@
   "name": "neurotask",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://calderonp.github.io/neurotask/",
+  "homepage": "https://caldeix.github.io/neurotask/",
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
