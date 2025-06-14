@@ -8,7 +8,8 @@
     "build": "vue-cli-service build",
     "lint": "vue-cli-service lint",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "commit":"git add . && git commit -m 'update' && git push"
   },
   "dependencies": {
     "core-js": "^3.8.3",
