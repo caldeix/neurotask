@@ -1,90 +1,139 @@
 <template>
   <div class="kanban-container">
     <div class="kanban-wrapper">
-      <!-- Header con buscador y filtros -->
-      <div class="header">
-        <div class="header-top">
-          <div class="title-container">
-            <h1 class="title" @click="startEditingTitle" v-if="!isEditingTitle">
-              {{ boardTitle }}
-              <span class="edit-icon">⚙️</span>
-            </h1>
-            <div v-else class="title-input-container">
-              <input
-                ref="titleInput"
-                v-model="editingTitle"
-                @keyup.enter="saveBoardTitle"
-                @blur="saveBoardTitle"
-                @keyup.esc="cancelEditTitle"
-                class="title-input"
-              />
-            </div>
+      <KanbanHeader
+        v-model:boardTitle="boardTitle"
+        v-model:searchTerm="searchTerm"
+        v-model:selectedProducts="selectedProducts"
+        v-model:selectedPriorities="selectedPriorities"
+        :available-products="availableProducts"
+        :available-priorities="availablePriorities"
+        @search="handleSearch"
+        @config-click="showConfigModal = true"
+        @add-task="openModal"
+      />
+     
+      <!-- Modal configuracion-->
+      <div v-if="showConfigModal" class="modal-overlay" @click="showConfigModal = false">
+        <div class="modal-content config-modal" @click.stop>
+          <div class="modal-header">
+            <h2 class="modal-title">Configuración</h2>
+            <button @click="showConfigModal = false" class="close-button-red">×</button>
           </div>
-          <div class="header-buttons">
-            <button @click="showJsonModal = true" class="json-button">
-              VER DATOS
+          
+          <!-- Pestañas de navegación -->
+          <div class="settings-tabs">
+            <button 
+              @click="activeSettingsTab = 'columns'" 
+              :class="['tab-button', { active: activeSettingsTab === 'columns' }]"
+            >
+              Columnas
             </button>
-            <button @click="exportData" class="export-button">
-              EXPORTAR DATOS
+            <button 
+              @click="activeSettingsTab = 'data'" 
+              :class="['tab-button', { active: activeSettingsTab === 'data' }]"
+            >
+              Datos
             </button>
-            <button @click="triggerFileInput" class="import-button">
-              IMPORTAR DATOS
-            </button>
-            <input type="file" ref="fileInput" @change="importData" accept=".json" style="display: none" />
           </div>
-        </div>
-
-        <!-- Buscador y filtros -->
-        <div class="search-filters-section">
-          <div class="search-container">
-            <input v-model="searchTerm" @input="handleSearch" type="text" placeholder="Buscar por título o ID..."
-              class="search-input" />
-            <button v-if="searchTerm" @click="clearSearch" class="clear-search-button">×</button>
-          </div>
-
-          <div class="filters-container">
-            <div class="filter-group">
-              <label class="filter-label">Productos:</label>
-              <div class="multiselect-container">
-                <div @click="showProductDropdown = !showProductDropdown" class="multiselect-trigger">
-                  <span v-if="selectedProducts.length === 0">Todos los productos</span>
-                  <span v-else>{{ selectedProducts.length }} seleccionado(s)</span>
-                  <span class="dropdown-arrow">▼</span>
+          
+          <!-- Contenido de Columnas -->
+          <div v-if="activeSettingsTab === 'columns'" class="config-modal-content">
+            <div class="column-types-container">
+              <div class="config-actions" style="margin-top: 0; padding-top: 0; border: none; justify-content: space-between; margin-bottom: 15px;">
+                <h3>Tipos de Columna</h3>
+                <div>
                 </div>
-                <div v-if="showProductDropdown" class="multiselect-dropdown">
-                  <div v-for="product in availableProducts" :key="product" @click="toggleProduct(product)"
-                    class="multiselect-option" :class="{ 'selected': selectedProducts.includes(product) }">
-                    <input type="checkbox" :checked="selectedProducts.includes(product)" @click.stop />
-                    {{ product }}
-                  </div>
+              </div>
+              
+              <div 
+                class="column-types-list" 
+                @dragover.prevent
+                @drop="onColumnTypeDrop"
+              >
+                <div 
+                  v-for="(type, index) in columnTypes" 
+                  :key="type.id" 
+                  class="column-type-item"
+                  draggable="true"
+                  @dragstart="onColumnTypeDragStart($event, index)"
+                  @dragover.prevent="onColumnTypeDragOver($event, index)"
+                  @dragend="onColumnTypeDragEnd"
+                >
+                  <div class="drag-handle" title="Arrastrar para reordenar">☰</div>
+                  <div class="color-preview" :style="{ backgroundColor: type.color }"></div>
+                  <input type="text" v-model="type.name" class="column-name-input" />
+                  <input type="color" v-model="type.color" class="color-picker" />
+                  <button @click="removeColumnType(index)" class="remove-column-btn" title="Eliminar columna" :disabled="columnTypes.length <= 1">
+                    ×
+                  </button>
+                </div>
+              </div>
+              
+              <div class="add-column-form">
+                <h4>Agregar nuevo tipo de columna</h4>
+                <div class="form-row">
+                  <input 
+                    type="text" 
+                    v-model="newColumnType.name" 
+                    placeholder="Nombre de la columna"
+                    class="column-name-input"
+                  />
+                  <input 
+                    type="color" 
+                    v-model="newColumnType.color" 
+                    class="color-picker"
+                  />
+                  <button 
+                    @click="addColumnType" 
+                    class="add-column-btn"
+                    :disabled="!newColumnType.name.trim()"
+                  >
+                    Agregar
+                  </button>
                 </div>
               </div>
             </div>
-
-            <div class="filter-group">
-              <label class="filter-label">Prioridad:</label>
-              <div class="multiselect-container">
-                <div @click="showPriorityDropdown = !showPriorityDropdown" class="multiselect-trigger">
-                  <span v-if="selectedPriorities.length === 0">Todas las prioridades</span>
-                  <span v-else>{{ selectedPriorities.length }} seleccionada(s)</span>
-                  <span class="dropdown-arrow">▼</span>
-                </div>
-                <div v-if="showPriorityDropdown" class="multiselect-dropdown">
-                  <div v-for="priority in availablePriorities" :key="priority.value"
-                    @click="togglePriority(priority.value)" class="multiselect-option"
-                    :class="{ 'selected': selectedPriorities.includes(priority.value) }">
-                    <input type="checkbox" :checked="selectedPriorities.includes(priority.value)" @click.stop />
-                    <span class="priority-indicator" :class="priority.class"></span>
-                    {{ priority.label }}
-                  </div>
-                </div>
-              </div>
+            
+            <div class="config-actions">
+              <button @click="saveColumnTypes" class="save-btn">Guardar Cambios</button>
+              <button @click="loadColumnTypes" class="cancel-btn">Cancelar</button>
             </div>
           </div>
-
-          <button @click="openModal" class="add-button">
-            + Añadir Tarea
-          </button>
+          
+          <!-- Contenido de Datos -->
+          <div v-if="activeSettingsTab === 'data'" class="data-view-content">
+            <div class="data-view-actions">
+              <button @click="exportData" class="export-config-btn">
+                Exportar Todos los Datos
+              </button>
+              <button @click="triggerFileInput" class="import-config-btn">
+                Importar Datos
+              </button>
+              <input type="file" ref="fileInput" @change="importData" accept=".json" style="display: none" />
+            </div>
+            
+            <div class="json-viewer">
+              <pre class="json-display">{{ 
+                JSON.stringify({
+                  settings: {
+                    title: boardTitle,
+                    columnTypes: columnTypes
+                  },
+                  tasks: enhancedTasksWithComments,
+                  comments: comments.value,
+                  version: '1.0.0'
+                }, null, 2) 
+              }}</pre>
+            </div>
+            
+            <div class="config-actions">
+              <button @click="copyJsonToClipboard" class="copy-json-btn">
+                {{ jsonCopied ? '¡Copiado!' : 'Copiar JSON' }}
+              </button>
+              <button @click="showConfigModal = false" class="cancel-btn">Cerrar</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -102,11 +151,12 @@
           </div>
           <div class="json-modal-content">
             <pre class="json-display-modal">{{ JSON.stringify({
-              settings: {
-                title_board: boardTitle.value
-              },
               tasks: enhancedTasksWithComments,
-              comments: comments.value
+              comments: comments.value,
+              settings: {
+                title_board: boardTitle,
+                version: '1.0.0'
+              }
             }, null, 2) }}</pre>
           </div>
         </div>
@@ -427,65 +477,7 @@
         </div>
       </div>
 
-      <!-- Modal de visualización -->
-      <div v-if="showViewModal" class="modal-overlay" @click="showViewModal = false">
-        <div class="modal-content" @click.stop>
-          <div class="modal-header">
-            <h2 class="modal-title">#{{ viewingTask?.id }} - {{ viewingTask?.name }} 
-              <span class="priority-badge" :class="getPriorityClass(viewingTask?.priority)">
-                {{ getPriorityLabel(viewingTask?.priority) }}
-              </span>
-              <span class="priority-badge" :class="getStatusClass(viewingTask?.status)">
-                {{ getStatusLabel(viewingTask?.status) }}
-              </span>
-            </h2>
-            <button @click="showViewModal = false" class="close-button-red">×</button>
-          </div>
-          <div class="view-modal-content">
-            <div class="view-field">
-              <strong>Estado:</strong> {{ getStatusLabel(viewingTask?.status) }}
-            </div>
-            <div class="view-field">
-              <strong>Productos:</strong>
-              <span v-if="viewingTask?.products && viewingTask.products.length > 0">
-                {{ viewingTask.products.join(', ') }}
-              </span>
-              <span v-else>{{ viewingTask?.product || 'No especificado' }}</span>
-            </div>
-            <div v-if="viewingTask?.description" class="view-field">
-              <strong>Descripción:</strong> {{ viewingTask.description }}
-            </div>
-            <div v-if="viewingTask?.jiraLink" class="view-field">
-              <strong>JIRA LINK:</strong>
-              <a :href="viewingTask.jiraLink" target="_blank" rel="noopener noreferrer" class="jira-link">
-                {{ viewingTask.jiraLink }}
-              </a>
-            </div>
-            <div v-if="viewingTask?.parentId" class="view-field">
-              <strong>Tarea Padre:</strong>
-              <button @click="highlightTask(viewingTask.parentId)" class="link-button">
-                {{ getTaskById(viewingTask.parentId)?.name }} (ID: {{ viewingTask.parentId }})
-              </button>
-            </div>
-            <div v-if="getChildrenTasks(viewingTask?.id).length > 0" class="view-field">
-              <strong>Subtareas:</strong>
-              <div class="subtasks-list">
-                <button v-for="child in getChildrenTasks(viewingTask?.id)" :key="child.id"
-                  @click="highlightTask(child.id)" class="link-button subtask-link">
-                  {{ child.name }} (ID: {{ child.id }})
-                </button>
-              </div>
-            </div>
-            <div class="view-field">
-              <strong>Comentarios:</strong> {{ getTaskComments(viewingTask?.id).length }}
-            </div>
-            <div class="view-field">
-              <strong>Creado:</strong> {{ formatDate(viewingTask?.createdAt) }}
-            </div>
-          </div>
-        </div>
-      </div>
-
+     
       <!-- Modal de confirmación de eliminación -->
       <div v-if="showDeleteModal" class="modal-overlay" @click="cancelDelete">
         <div class="modal-content delete-modal" @click.stop>
@@ -525,102 +517,44 @@
 
       <!-- Columnas del Kanban -->
       <div class="columns-container">
-        <!-- Columna Backlog -->
-        <div class="column">
-          <div class="column-header backlog-header">
+        <!-- Columnas dinámicas basadas en columnTypes -->
+        <div v-for="(column, index) in columnTypes" :key="index" class="column">
+          <div class="column-header" :class="`${column.id}-header`" :style="{ backgroundColor: column.color, color: getContrastColor(column.color) }">
             <h2 class="column-title">
-              <div class="status-dot backlog-dot"></div>
-              Backlog
-              <span class="task-count">({{ getFilteredTasksByStatus('backlog').length }})</span>
+              <div class="status-dot" :class="`${column.id}-dot`"></div>
+              {{ column.name }}
             </h2>
           </div>
-          <div @drop="onDrop($event, 'backlog')" @dragover.prevent @dragenter.prevent class="column-content"
-            :class="{ 'drag-over': dragOverColumn === 'backlog' }">
-            <div v-for="task in getFilteredTasksByStatus('backlog')" :key="task.id" :draggable="true"
-              @dragstart="onDragStart($event, task)" @dragend="onDragEnd" @dblclick="viewTask(task)"
-              @contextmenu.prevent="showContextMenuFor(task, $event)" class="task-card backlog-card" :class="{
-                'parent-task': isParentTask(task.id),
-                'child-task': task.parentId,
-                'highlighted': highlightedTaskId === task.id
-              }">
+          <div 
+            @drop="onDrop($event, column.id)" 
+            @dragover.prevent 
+            @dragenter.prevent 
+            class="column-content"
+            :class="{ 'drag-over': dragOverColumn === column.id }"
+            :style="{ borderTopColor: column.color }"
+          >
+            <div 
+              v-for="task in getFilteredTasksByStatus(column.id)" 
+              :key="task.id" 
+              :draggable="true"
+              @dragstart="onDragStart($event, task)" 
+              @dragend="onDragEnd" 
+              @dblclick="viewTask(task)"
+              @contextmenu.prevent="showContextMenuFor(task, $event)" 
+              class="task-card" 
+              :class="[
+                `${column.id}-card`,
+                { 
+                  'parent-task': isParentTask(task.id),
+                  'child-task': task.parentId,
+                  'highlighted': highlightedTaskId === task.id
+                }
+              ]"
+            >
               <div class="task-header">
                 <h3 class="task-title">{{ task.name }}</h3>
                 <div class="task-actions">
-                  <button @click.stop="openCommentsModal(task)" class="comments-button"
-                    :title="`${getTaskComments(task.id).length} comentarios`">
-                    💬 {{ getTaskComments(task.id).length }}
-                  </button>
-                  <div class="task-badges">
-                    <div v-if="isParentTask(task.id)" class="parent-badge">Padre</div>
-                    <div v-if="task.parentId" class="child-badge">Subtarea</div>
-                  </div>
-                </div>
-              </div>
-              <div class="task-meta">
-                <span class="task-id">ID: {{ task.id }}</span>
-                <span class="task-product">
-                  {{ task.products && task.products.length > 0 ? task.products.join(', ') : (task.product || 'Sin producto') }}
-                </span>
-                <span class="priority-badge" :class="getPriorityClass(task.priority)">
-                  {{ getPriorityLabel(task.priority) }}
-                </span>
-              </div>
-              <div v-if="task.description" class="task-description">{{ truncateText(task.description, 50) }}</div>
-              <div v-if="task.jiraLink" class="jira-link-container">
-                <a :href="task.jiraLink" target="_blank" rel="noopener noreferrer" class="jira-link-card" @click.stop>
-                  🔗 JIRA
-                </a>
-              </div>
-              <div v-if="task.parentId" class="parent-info">
-                Padre:
-                <button @click.stop="highlightTask(task.parentId)" class="link-button">
-                  {{ getTaskById(task.parentId)?.name || 'Tarea no encontrada' }}
-                </button>
-              </div>
-              <div v-if="isParentTask(task.id)" class="children-info">
-                Subtareas: {{ getChildrenCount(task.id) }}
-                <div class="children-links">
-                  <button v-for="child in getChildrenTasks(task.id).slice(0, 2)" :key="child.id"
-                    @click.stop="highlightTask(child.id)" class="link-button child-link">
-                    {{ child.name }}
-                  </button>
-                  <span v-if="getChildrenTasks(task.id).length > 2">
-                    +{{ getChildrenTasks(task.id).length - 2 }} más
-                  </span>
-                </div>
-              </div>
-              <div class="task-info">
-                <span>{{ formatDate(task.createdAt) }}</span>
-              </div>
-            </div>
-            <div v-if="getFilteredTasksByStatus('backlog').length === 0" class="empty-column">
-              No hay tareas en backlog
-            </div>
-          </div>
-        </div>
-
-        <!-- Columna Paralyzed -->
-        <div class="column">
-          <div class="column-header paralyzed-header">
-            <h2 class="column-title">
-              <div class="status-dot paralyzed-dot"></div>
-              Paralyzed
-              <span class="task-count">({{ getFilteredTasksByStatus('paralyzed').length }})</span>
-            </h2>
-          </div>
-          <div @drop="onDrop($event, 'paralyzed')" @dragover.prevent @dragenter.prevent class="column-content"
-            :class="{ 'drag-over': dragOverColumn === 'paralyzed' }">
-            <div v-for="task in getFilteredTasksByStatus('paralyzed')" :key="task.id" :draggable="true"
-              @dragstart="onDragStart($event, task)" @dragend="onDragEnd" @dblclick="viewTask(task)"
-              @contextmenu.prevent="showContextMenuFor(task, $event)" class="task-card paralyzed-card" :class="{
-                'parent-task': isParentTask(task.id),
-                'child-task': task.parentId,
-                'highlighted': highlightedTaskId === task.id
-              }">
-              <div class="task-header">
-                <h3 class="task-title">{{ task.name }}</h3>
-                <div class="task-actions">
-                  <button @click.stop="openCommentsModal(task)" class="comments-button"
+                  <button class="comments-button"
                     :title="`${getTaskComments(task.id).length} comentarios`">
                     💬 {{ getTaskComments(task.id).length }}
                   </button>
@@ -667,243 +601,33 @@
                 <span>{{ formatDate(task.createdAt) }}</span>
               </div>
             </div>
-            <div v-if="getFilteredTasksByStatus('paralyzed').length === 0" class="empty-column">
-              No hay tareas paralizadas
+            <div v-if="getFilteredTasksByStatus(column.id).length === 0" class="empty-column">
+              No hay tareas en {{ column.name.toLowerCase() }}
             </div>
           </div>
-        </div>
 
-        <!-- Columna In Progress -->
-        <div class="column">
-          <div class="column-header progress-header">
-            <h2 class="column-title">
-              <div class="status-dot progress-dot"></div>
-              In Progress
-              <span class="task-count">({{ getFilteredTasksByStatus('in-progress').length }})</span>
-            </h2>
-          </div>
-          <div @drop="onDrop($event, 'in-progress')" @dragover.prevent @dragenter.prevent class="column-content"
-            :class="{ 'drag-over': dragOverColumn === 'in-progress' }">
-            <div v-for="task in getFilteredTasksByStatus('in-progress')" :key="task.id" :draggable="true"
-              @dragstart="onDragStart($event, task)" @dragend="onDragEnd" @dblclick="viewTask(task)"
-              @contextmenu.prevent="showContextMenuFor(task, $event)" class="task-card progress-card" :class="{
-                'parent-task': isParentTask(task.id),
-                'child-task': task.parentId,
-                'highlighted': highlightedTaskId === task.id
-              }">
-              <div class="task-header">
-                <h3 class="task-title">{{ task.name }}</h3>
-                <div class="task-actions">
-                  <button @click.stop="openCommentsModal(task)" class="comments-button"
-                    :title="`${getTaskComments(task.id).length} comentarios`">
-                    💬 {{ getTaskComments(task.id).length }}
-                  </button>
-                  <div class="task-badges">
-                    <div v-if="isParentTask(task.id)" class="parent-badge">Padre</div>
-                    <div v-if="task.parentId" class="child-badge">Subtarea</div>
-                  </div>
-                </div>
-              </div>
-              <div class="task-meta">
-                <span class="task-id">ID: {{ task.id }}</span>
-                <span class="task-product">
-                  {{ task.products && task.products.length > 0 ? task.products.join(', ') : (task.product || 'Sin producto') }}
-                </span>
-                <span class="priority-badge" :class="getPriorityClass(task.priority)">
-                  {{ getPriorityLabel(task.priority) }}
-                </span>
-              </div>
-              <div v-if="task.description" class="task-description">{{ task.description }}</div>
-              <div v-if="task.jiraLink" class="jira-link-container">
-                <a :href="task.jiraLink" target="_blank" rel="noopener noreferrer" class="jira-link-card" @click.stop>
-                  🔗 JIRA
-                </a>
-              </div>
-              <div v-if="task.parentId" class="parent-info">
-                Padre:
-                <button @click.stop="highlightTask(task.parentId)" class="link-button">
-                  {{ getTaskById(task.parentId)?.name || 'Tarea no encontrada' }}
-                </button>
-              </div>
-              <div v-if="isParentTask(task.id)" class="children-info">
-                Subtareas: {{ getChildrenCount(task.id) }}
-                <div class="children-links">
-                  <button v-for="child in getChildrenTasks(task.id).slice(0, 2)" :key="child.id"
-                    @click.stop="highlightTask(child.id)" class="link-button child-link">
-                    {{ child.name }}
-                  </button>
-                  <span v-if="getChildrenTasks(task.id).length > 2">
-                    +{{ getChildrenTasks(task.id).length - 2 }} más
-                  </span>
-                </div>
-              </div>
-              <div class="task-info">
-                <span>{{ formatDate(task.createdAt) }}</span>
-              </div>
-            </div>
-            <div v-if="getFilteredTasksByStatus('in-progress').length === 0" class="empty-column">
-              No hay tareas en progreso
-            </div>
-          </div>
-        </div>
-
-        <!-- Columna Testing -->
-        <div class="column">
-          <div class="column-header testing-header">
-            <h2 class="column-title">
-              <div class="status-dot testing-dot"></div>
-              Testing
-              <span class="task-count">({{ getFilteredTasksByStatus('testing').length }})</span>
-            </h2>
-          </div>
-          <div @drop="onDrop($event, 'testing')" @dragover.prevent @dragenter.prevent class="column-content"
-            :class="{ 'drag-over': dragOverColumn === 'testing' }">
-            <div v-for="task in getFilteredTasksByStatus('testing')" :key="task.id" :draggable="true"
-              @dragstart="onDragStart($event, task)" @dragend="onDragEnd" @dblclick="viewTask(task)"
-              @contextmenu.prevent="showContextMenuFor(task, $event)" class="task-card testing-card" :class="{
-                'parent-task': isParentTask(task.id),
-                'child-task': task.parentId,
-                'highlighted': highlightedTaskId === task.id
-              }">
-              <div class="task-header">
-                <h3 class="task-title">{{ task.name }}</h3>
-                <div class="task-actions">
-                  <button @click.stop="openCommentsModal(task)" class="comments-button"
-                    :title="`${getTaskComments(task.id).length} comentarios`">
-                    💬 {{ getTaskComments(task.id).length }}
-                  </button>
-                  <div class="task-badges">
-                    <div v-if="isParentTask(task.id)" class="parent-badge">Padre</div>
-                    <div v-if="task.parentId" class="child-badge">Subtarea</div>
-                  </div>
-                </div>
-              </div>
-              <div class="task-meta">
-                <span class="task-id">ID: {{ task.id }}</span>
-                <span class="task-product">
-                  {{ task.products && task.products.length > 0 ? task.products.join(', ') : (task.product || 'Sin producto') }}
-                </span>
-                <span class="priority-badge" :class="getPriorityClass(task.priority)">
-                  {{ getPriorityLabel(task.priority) }}
-                </span>
-              </div>
-              <div v-if="task.description" class="task-description">{{ task.description }}</div>
-              <div v-if="task.jiraLink" class="jira-link-container">
-                <a :href="task.jiraLink" target="_blank" rel="noopener noreferrer" class="jira-link-card" @click.stop>
-                  🔗 JIRA
-                </a>
-              </div>
-              <div v-if="task.parentId" class="parent-info">
-                Padre:
-                <button @click.stop="highlightTask(task.parentId)" class="link-button">
-                  {{ getTaskById(task.parentId)?.name || 'Tarea no encontrada' }}
-                </button>
-              </div>
-              <div v-if="isParentTask(task.id)" class="children-info">
-                Subtareas: {{ getChildrenCount(task.id) }}
-                <div class="children-links">
-                  <button v-for="child in getChildrenTasks(task.id).slice(0, 2)" :key="child.id"
-                    @click.stop="highlightTask(child.id)" class="link-button child-link">
-                    {{ child.name }}
-                  </button>
-                  <span v-if="getChildrenTasks(task.id).length > 2">
-                    +{{ getChildrenTasks(task.id).length - 2 }} más
-                  </span>
-                </div>
-              </div>
-              <div class="task-info">
-                <span>{{ formatDate(task.createdAt) }}</span>
-              </div>
-            </div>
-            <div v-if="getFilteredTasksByStatus('testing').length === 0" class="empty-column">
-              No hay tareas en testing
-            </div>
-          </div>
-        </div>
-
-        <!-- Columna Finalized -->
-        <div class="column">
-          <div class="column-header finalized-header">
-            <h2 class="column-title">
-              <div class="status-dot finalized-dot"></div>
-              Finalized
-              <span class="task-count">({{ getFilteredTasksByStatus('finalized').length }})</span>
-            </h2>
-          </div>
-          <div @drop="onDrop($event, 'finalized')" @dragover.prevent @dragenter.prevent class="column-content"
-            :class="{ 'drag-over': dragOverColumn === 'finalized' }">
-            <div v-for="task in getFilteredTasksByStatus('finalized')" :key="task.id" :draggable="true"
-              @dragstart="onDragStart($event, task)" @dragend="onDragEnd" @dblclick="viewTask(task)"
-              @contextmenu.prevent="showContextMenuFor(task, $event)" class="task-card finalized-card" :class="{
-                'parent-task': isParentTask(task.id),
-                'child-task': task.parentId,
-                'highlighted': highlightedTaskId === task.id
-              }">
-              <div class="task-header">
-                <h3 class="task-title">{{ task.name }}</h3>
-                <div class="task-actions">
-                  <button @click.stop="openCommentsModal(task)" class="comments-button"
-                    :title="`${getTaskComments(task.id).length} comentarios`">
-                    💬 {{ getTaskComments(task.id).length }}
-                  </button>
-                  <div class="task-badges">
-                    <div v-if="isParentTask(task.id)" class="parent-badge">Padre</div>
-                    <div v-if="task.parentId" class="child-badge">Subtarea</div>
-                  </div>
-                </div>
-              </div>
-              <div class="task-meta">
-                <span class="task-id">ID: {{ task.id }}</span>
-                <span class="task-product">
-                  {{ task.products && task.products.length > 0 ? task.products.join(', ') : (task.product || 'Sin producto') }}
-                </span>
-                <span class="priority-badge" :class="getPriorityClass(task.priority)">
-                  {{ getPriorityLabel(task.priority) }}
-                </span>
-              </div>
-              <div v-if="task.description" class="task-description">{{ task.description }}</div>
-              <div v-if="task.jiraLink" class="jira-link-container">
-                <a :href="task.jiraLink" target="_blank" rel="noopener noreferrer" class="jira-link-card" @click.stop>
-                  🔗 JIRA
-                </a>
-              </div>
-              <div v-if="task.parentId" class="parent-info">
-                Padre:
-                <button @click.stop="highlightTask(task.parentId)" class="link-button">
-                  {{ getTaskById(task.parentId)?.name || 'Tarea no encontrada' }}
-                </button>
-              </div>
-              <div v-if="isParentTask(task.id)" class="children-info">
-                Subtareas: {{ getChildrenCount(task.id) }}
-                <div class="children-links">
-                  <button v-for="child in getChildrenTasks(task.id).slice(0, 2)" :key="child.id"
-                    @click.stop="highlightTask(child.id)" class="link-button child-link">
-                    {{ child.name }}
-                  </button>
-                  <span v-if="getChildrenTasks(task.id).length > 2">
-                    +{{ getChildrenTasks(task.id).length - 2 }} más
-                  </span>
-                </div>
-              </div>
-              <div class="task-info">
-                <span>{{ formatDate(task.createdAt) }}</span>
-              </div>
-            </div>
-            <div v-if="getFilteredTasksByStatus('finalized').length === 0" class="empty-column">
-              No hay tareas finalizadas
-            </div>
-          </div>
         </div>
       </div>
+
+      <!-- Componente TreeNode como template separado -->
+      <TreeNodeComponent v-if="false" :task="null" :level="0" />
     </div>
   </div>
 
-  <!-- Componente TreeNode como template separado -->
-  <TreeNodeComponent v-if="false" :task="null" :level="0" />
 </template>
-
 <script setup>
-import { ref, onMounted, watch, computed, defineComponent, nextTick } from 'vue'
+import { ref, onMounted, watch, computed, defineComponent } from 'vue';
+import KanbanHeader from './components/KanbanHeader.vue';
+// Function to calculate contrast color (black or white) based on background color
+const getContrastColor = (hexColor) => {
+  if (!hexColor) return '#000000'; // Default to black if no color is provided
+  const hex = hexColor.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance > 0.5 ? '#000000' : '#ffffff';
+};
 
 // Definir TreeNodeComponent como un componente separado
 const TreeNodeComponent = defineComponent({
@@ -980,13 +704,14 @@ const TreeNodeComponent = defineComponent({
   }
 })
 
+// Estado para el arrastre de columnas
+const draggedColumnIndex = ref(null);
+const dragOverColumnIndex = ref(null);
+
 // Estado reactivo
+const boardTitle = ref('Tablero Kanban')
 const tasks = ref([])
 const comments = ref([])
-const boardTitle = ref('Custom Board')
-const isEditingTitle = ref(false)
-const editingTitle = ref('')
-const titleInput = ref(null)
 
 // Computed property para combinar tareas con sus comentarios
 const enhancedTasksWithComments = computed(() => {
@@ -1017,13 +742,16 @@ const newTask = ref({
   endDate: null
 })
 
+// Estado del modal configuración
+const showConfigModal = ref(false)
+const columnTypes = ref([
+])
+const newColumnType = ref({ name: '', color: '#CCCCCC' })
+
 // Estado del modal JSON
 const showJsonModal = ref(false)
 const jsonCopied = ref(false)
-
-// Estado del modal de visualización
-const showViewModal = ref(false)
-const viewingTask = ref(null)
+const activeSettingsTab = ref('columns') // 'columns' or 'data' for tab navigation
 
 // Estado del modal de eliminación
 const showDeleteModal = ref(false)
@@ -1106,9 +834,26 @@ async function importData(event) {
       comments.value = data.comments || []
       
       // Aplicar configuración si existe
-      if (data.settings && data.settings.title_board) {
-        boardTitle.value = data.settings.title_board
+      if (data.settings) {
+        if (data.settings.title_board) {
+          boardTitle.value = data.settings.title_board
+        }
+        // Importar configuración de columnas si existe
+        if (data.settings.columnTypes && Array.isArray(data.settings.columnTypes)) {
+          columnTypes.value = data.settings.columnTypes
+        }
         saveSettings()
+      }
+    } else if (data.settings && data.settings.columnTypes && data.type === 'kanban-column-config') {
+      // Solo configuración de columnas
+      if (confirm('¿Importar configuración de columnas? Esto sobrescribirá la configuración actual.')) {
+        columnTypes.value = data.settings.columnTypes
+        if (data.settings.title) {
+          boardTitle.value = data.settings.title
+        }
+        saveSettings()
+      } else {
+        return // Cancelar la importación si el usuario no confirma
       }
     } else {
       throw new Error('El archivo no contiene un formato válido')
@@ -1117,14 +862,36 @@ async function importData(event) {
     // Guardar en localStorage
     saveTasks()
     saveComments()
-
+    
     // Resetear el input para permitir cargar el mismo archivo de nuevo
     event.target.value = null
 
-    alert('Datos importados correctamente')
+    // Mostrar notificación de éxito
+    const notification = document.createElement('div')
+    notification.className = 'import-notification success'
+    notification.textContent = 'Datos importados correctamente'
+    document.body.appendChild(notification)
+    
+    // Eliminar la notificación después de 3 segundos
+    setTimeout(() => {
+      notification.classList.add('fade-out')
+      setTimeout(() => notification.remove(), 300)
+    }, 3000)
+    
   } catch (error) {
     console.error('Error importing data:', error)
-    alert('Error al importar los datos: ' + (error.message || 'Formato de archivo no válido'))
+    
+    // Mostrar notificación de error
+    const notification = document.createElement('div')
+    notification.className = 'import-notification error'
+    notification.textContent = 'Error al importar: ' + (error.message || 'Formato de archivo no válido')
+    document.body.appendChild(notification)
+    
+    // Eliminar la notificación después de 5 segundos
+    setTimeout(() => {
+      notification.classList.add('fade-out')
+      setTimeout(() => notification.remove(), 300)
+    }, 5000)
   }
 }
 
@@ -1138,14 +905,16 @@ function readFileAsText(file) {
 }
 
 // Function to export data as JSON file
-function exportData() {
+const exportData = () => {
   try {
     const dataToExport = {
       settings: {
-        title_board: boardTitle.value
+        title_board: boardTitle.value,
+        columnTypes: columnTypes.value
       },
       tasks: tasks.value,
-      comments: comments.value
+      comments: comments.value,
+      version: '1.0.0'
     }
     
     const dataStr = JSON.stringify(dataToExport, null, 2)
@@ -1193,13 +962,6 @@ const availablePriorities = [
   { value: 'muy-alto', label: 'Muy Alto', class: 'priority-muy-alto' }
 ]
 
-// Estados disponibles
-const availableStatuses = [
-  { value: 'pendiente', label: 'Pendiente', class: 'status-pendiente' },
-  { value: 'en-progreso', label: 'En Progreso', class: 'status-en-progreso' },
-  { value: 'completado', label: 'Completado', class: 'status-completado' }
-]
-
 // Computed para productos disponibles
 const availableProducts = computed(() => {
   const products = [...new Set(tasks.value.map(task => task.products).flat().filter(Boolean))]
@@ -1244,19 +1006,6 @@ function getPriorityClass(priority) {
   return priorityObj ? priorityObj.class : ''
 }
 
-function getStatusClass(status) {
-  const statusObj = availableStatuses.find(s => s.value === status)
-  return statusObj ? statusObj.class : ''
-}
-
-function togglePriority(priority) {
-  const index = selectedPriorities.value.indexOf(priority)
-  if (index > -1) {
-    selectedPriorities.value.splice(index, 1)
-  } else {
-    selectedPriorities.value.push(priority)
-  }
-}
 
 // Funciones de comentarios con Matriz de Eisenhower
 function getTaskComments(taskId) {
@@ -1476,39 +1225,140 @@ function loadSettings() {
 }
 
 // Guardar configuración
-function saveSettings() {
-  const settings = {
-    title_board: boardTitle.value
+const saveSettings = () => {
+  localStorage.setItem('kanbanSettings', JSON.stringify({
+    title: boardTitle.value,
+    columnTypes: columnTypes.value
+  }))
+}
+
+// Cargar configuración de columnas
+const loadColumnTypes = () => {
+  const savedSettings = localStorage.getItem('kanbanSettings')
+  if (savedSettings) {
+    try {
+      const settings = JSON.parse(savedSettings)
+      if (settings.columnTypes) {
+        columnTypes.value = settings.columnTypes
+      }
+    } catch (e) {
+      console.error('Error al cargar configuración de columnas:', e)
+    }
   }
-  localStorage.setItem('boardSettings', JSON.stringify(settings))
 }
 
-// Manejar la edición del título
-function startEditingTitle() {
-  editingTitle.value = boardTitle.value
-  isEditingTitle.value = true
-  nextTick(() => {
-    titleInput.value?.focus()
-    titleInput.value?.select()
-  })
-}
-
-function saveBoardTitle() {
-  if (editingTitle.value.trim()) {
-    boardTitle.value = editingTitle.value.trim()
-    saveSettings()
+// Agregar nuevo tipo de columna
+const addColumnType = () => {
+  if (newColumnType.value.name.trim()) {
+    columnTypes.value.push({
+      id: newColumnType.value.name.toLowerCase().replace(/\s+/g, '-'),
+      name: newColumnType.value.name.trim(),
+      color: newColumnType.value.color
+    })
+    newColumnType.value = { name: '', color: '#CCCCCC' }
   }
-  isEditingTitle.value = false
 }
 
-function cancelEditTitle() {
-  isEditingTitle.value = false
+// Funciones para el reordenamiento de columnas en configuración
+function onColumnTypeDragStart(event, index) {
+  event.stopPropagation();
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', index);
+  draggedColumnIndex.value = index;
+  event.currentTarget.classList.add('dragging');
 }
 
-// Cargar tareas desde localStorage al montar el componente
+function onColumnTypeDragOver(event, index) {
+  event.preventDefault();
+  if (draggedColumnIndex.value === null) return;
+  dragOverColumnIndex.value = index;
+  
+  // Actualizar clases visuales
+  const items = document.querySelectorAll('.column-type-item');
+  items.forEach((item, i) => {
+    item.classList.toggle('drag-over', i === index);
+  });
+}
+
+function onColumnTypeDrop(event) {
+  event.preventDefault();
+  
+  if (draggedColumnIndex.value === null || dragOverColumnIndex.value === null) return;
+  if (draggedColumnIndex.value === dragOverColumnIndex.value) return;
+  
+  // Prevenir cualquier acción adicional que pueda cerrar el menú
+  event.stopImmediatePropagation();
+  
+  // Reordenar los tipos de columna
+  const newColumnTypes = [...columnTypes.value];
+  const [movedColumn] = newColumnTypes.splice(draggedColumnIndex.value, 1);
+  newColumnTypes.splice(dragOverColumnIndex.value, 0, movedColumn);
+  
+  columnTypes.value = newColumnTypes;
+  saveColumnTypes();
+  
+  // Resetear estados
+  onColumnTypeDragEnd();
+}
+
+function onColumnTypeDragEnd() {
+  // Remover clases de arrastre
+  document.querySelectorAll('.column-type-item').forEach(el => {
+    el.classList.remove('dragging', 'drag-over');
+  });
+  
+  draggedColumnIndex.value = null;
+  dragOverColumnIndex.value = null;
+}
+
+// Eliminar tipo de columna
+function removeColumnType(index) {
+  const column = columnTypes.value[index];
+  
+  // Verificar si hay tareas en esta columna
+  const tasksInColumn = tasks.value.filter(task => task.status === column.id);
+  
+  if (tasksInColumn.length > 0) {
+    showNotification(`No se puede eliminar la columna "${column.name}" porque tiene ${tasksInColumn.length} tarea(s) asignada(s).`, 'error');
+    return;
+  }
+  
+  if (columnTypes.value.length > 1) {
+    columnTypes.value.splice(index, 1);
+    saveColumnTypes();
+    showNotification('Columna eliminada correctamente');
+  } else {
+    showNotification('Debe haber al menos una columna', 'error');
+  }
+}
+
+// Guardar tipos de columna
+const saveColumnTypes = () => {
+  saveSettings()
+  showConfigModal.value = false
+}
+
+
+
+// Función para mostrar notificaciones
+function showNotification(message, type = 'success') {
+  const notification = document.createElement('div')
+  notification.className = `import-notification ${type}`
+  notification.textContent = message
+  document.body.appendChild(notification)
+  
+  // Eliminar la notificación después de 3 segundos
+  setTimeout(() => {
+    notification.classList.add('fade-out')
+    setTimeout(() => notification.remove(), 300)
+  }, 3000)
+}
+
+// Cargar tareas y configuración desde localStorage al montar el componente
 onMounted(() => {
   loadSettings()
   loadTasks()
+  loadColumnTypes()
   loadComments()
   // Cerrar dropdowns y menús al hacer click fuera
   document.addEventListener('click', (e) => {
@@ -1556,52 +1406,7 @@ function loadTasks() {
       })
     } else {
       // Tareas de ejemplo si no hay datos guardados
-      tasks.value = [
-        {
-          id: 1,
-          name: 'Implementar autenticación',
-          description: 'Crear sistema de login y registro',
-          products: ['LIGHTREVIEW'],
-          priority: 'alto',
-          jiraLink: 'https://jira.company.com/browse/LR-123',
-          status: 'backlog',
-          parentId: null,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: 2,
-          name: 'Diseñar dashboard',
-          description: 'Crear interfaz principal del usuario',
-          products: ['DASHBOARD'],
-          priority: 'medio',
-          jiraLink: '',
-          status: 'paralyzed',
-          parentId: null,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: 3,
-          name: 'Validación de formularios',
-          description: 'Añadir validaciones al login',
-          products: ['LIGHTREVIEW'],
-          priority: 'bajo',
-          jiraLink: 'https://jira.company.com/browse/LR-124',
-          status: 'backlog',
-          parentId: 1,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: 4,
-          name: 'Pruebas unitarias',
-          description: 'Crear tests para el sistema de autenticación',
-          products: ['LIGHTREVIEW', 'API'],
-          priority: 'muy-alto',
-          jiraLink: 'https://jira.company.com/browse/LR-125',
-          status: 'testing',
-          parentId: null,
-          createdAt: new Date().toISOString()
-        }
-      ]
+      tasks.value = []
     }
   } catch (error) {
     console.error('Error al cargar las tareas:', error)
@@ -1785,18 +1590,7 @@ function handleSearch() {
   console.log("Buscando:", searchTerm.value)
 }
 
-function clearSearch() {
-  searchTerm.value = ''
-}
 
-function toggleProduct(product) {
-  const index = selectedProducts.value.indexOf(product)
-  if (index > -1) {
-    selectedProducts.value.splice(index, 1)
-  } else {
-    selectedProducts.value.push(product)
-  }
-}
 
 function getFilteredTasksByStatus(status) {
   return tasks.value.filter(task => {
@@ -1827,15 +1621,6 @@ function getFilteredTasksByStatus(status) {
 
     return true
   })
-}
-
-function openCommentsModal(task) {
-  commentsTask.value = task
-  showCommentsModal.value = true
-  newComment.value = {
-    text: '',
-    matrixValue: 'not-important-not-urgent'
-  }
 }
 
 function closeCommentsModal() {
@@ -1875,8 +1660,8 @@ function editTask(task) {
 
 // Función para ver tarea
 function viewTask(task) {
-  viewingTask.value = task
-  showViewModal.value = true
+  commentsTask.value = task
+  showCommentsModal.value = true
 }
 
 // Función para resaltar tarea
@@ -1888,7 +1673,6 @@ function highlightTask(taskId) {
 
   // Establecer la tarea resaltada
   highlightedTaskId.value = taskId
-  showViewModal.value = false
 
   // Configurar un nuevo temporizador de 5 segundos
   highlightTimer = setTimeout(() => {
@@ -1971,2056 +1755,6 @@ function onDrop(event, newStatus) {
 
 
 
-<style scoped>
-/* Form layout */
-.form-row {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.form-row .form-group {
-  flex: 1;
-  margin-bottom: 0;
-}
-
-/* Date inputs */
-input[type="date"] {
-  padding: 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  width: 100%;
-  font-family: inherit;
-}
-
-input[type="date"]:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
-}
-
-/* Optional label */
-.optional-label {
-  color: #6b7280;
-  font-size: 0.875rem;
-  font-weight: normal;
-}
-/* Estilos base */
-* {
-  box-sizing: border-box;
-}
-
-.kanban-container {
-  height: 100vh;
-  background-color: #f8fafc;
-  padding: 24px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.kanban-wrapper {
-  max-width: 100%;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-}
-
-/* Header mejorado */
-.header {
-  margin-bottom: 24px;
-  flex-shrink: 0;
-}
-
-.header-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.header-buttons {
-  display: flex;
-  gap: 16px;
-}
-
-.title-container {
-  display: flex;
-  align-items: center;
-  position: relative;
-}
-
-.title {
-  font-size: 2rem;
-  font-weight: bold;
-  color: #1f2937;
-  margin: 0;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-.title:hover {
-  background-color: #f3f4f6;
-}
-
-.edit-icon {
-  font-size: 1.2rem;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-}
-
-.title:hover .edit-icon {
-  opacity: 1;
-}
-
-.title-input {
-  font-size: 2rem;
-  font-weight: bold;
-  color: #1f2937;
-  border: 2px solid #3b82f6;
-  border-radius: 4px;
-  padding: 4px 8px;
-  width: 300px;
-  outline: none;
-}
-
-.title-input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
-}
-
-.json-button,
-.export-button,
-.import-button {
-  padding: 12px 24px;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.2s;
-  margin-left: 16px;
-}
-
-.json-button,
-.export-button,
-.import-button {
-  background-color: #3b82f6;
-}
-
-.json-button:hover,
-.export-button:hover,
-.import-button:hover {
-  background-color: #2563eb;
-}
-
-.tree-button {
-  padding: 8px 16px;
-  background-color: #10b981;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  margin-left: 8px;
-}
-
-.tree-button:hover {
-  background-color: #059669;
-}
-
-/* Estilos para la vista de árbol genealógico como página completa */
-.tree-view-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.tree-view-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid #e5e7eb;
-}
-
-.tree-view-title {
-  font-size: 2rem;
-  font-weight: bold;
-  color: #1e293b;
-  margin: 0;
-}
-
-.back-button-main {
-  padding: 12px 24px;
-  background-color: #6b7280;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  font-weight: 500;
-}
-
-.back-button-main:hover {
-  background-color: #4b5563;
-}
-
-.tree-view-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.parent-selector-main {
-  margin-bottom: 32px;
-  padding: 24px;
-  background-color: white;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e5e7eb;
-}
-
-.tree-selector {
-  max-width: 400px;
-}
-
-.tree-container-main {
-  flex: 1;
-  background-color: white;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e5e7eb;
-  padding: 32px;
-  overflow: auto;
-}
-
-.tree-wrapper-main {
-  min-width: fit-content;
-}
-
-.no-parent-selected-main {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.empty-state {
-  text-align: center;
-  max-width: 400px;
-}
-
-.empty-icon {
-  font-size: 4rem;
-  margin-bottom: 16px;
-}
-
-.empty-state h3 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #1e293b;
-  margin: 0 0 12px 0;
-}
-
-.empty-state p {
-  color: #6b7280;
-  line-height: 1.6;
-  margin: 0;
-}
-
-.search-filters-section {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.search-container {
-  flex: 1;
-  min-width: 300px;
-  position: relative;
-}
-
-.search-input {
-  width: 100%;
-  padding: 12px 16px;
-  border: 2px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 16px;
-  outline: none;
-  transition: border-color 0.2s;
-  padding-right: 40px;
-}
-
-.search-input:focus {
-  border-color: #3b82f6;
-}
-
-.clear-search-button {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: #6b7280;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-}
-
-.clear-search-button:hover {
-  color: #374151;
-}
-
-.filters-container {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-}
-
-.filter-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.filter-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #1e293b;
-  white-space: nowrap;
-}
-
-.multiselect-container {
-  position: relative;
-  min-width: 180px;
-}
-
-.multiselect-trigger {
-  padding: 8px 12px;
-  border: 2px solid #d1d5db;
-  border-radius: 6px;
-  background-color: white;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
-}
-
-.multiselect-trigger:hover {
-  border-color: #9ca3af;
-}
-
-.dropdown-arrow {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.multiselect-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background-color: white;
-  border: 2px solid #d1d5db;
-  border-top: none;
-  border-radius: 0 0 6px 6px;
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 10;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.multiselect-option {
-  padding: 8px 12px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  transition: background-color 0.2s;
-}
-
-.multiselect-option:hover {
-  background-color: #f9fafb;
-}
-
-.multiselect-option.selected {
-  background-color: #eff6ff;
-  color: #1e40af;
-}
-
-.add-button {
-  padding: 12px 24px;
-  background-color: #3b82f6;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  white-space: nowrap;
-}
-
-.add-button:hover {
-  background-color: #2563eb;
-}
-
-/* Estilos para prioridades */
-.priority-indicator {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.priority-muy-bajo {
-  background-color: #e5e7eb;
-}
-
-.priority-bajo {
-  background-color: #60a5fa;
-}
-
-.priority-medio {
-  background-color: #fbbf24;
-}
-
-.priority-alto {
-  background-color: #f97316;
-}
-
-.priority-muy-alto {
-  background-color: #ef4444;
-}
-
-.priority-badge {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.priority-badge.priority-muy-bajo {
-  background-color: #f3f4f6;
-  color: #6b7280;
-}
-
-.priority-badge.priority-bajo {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.priority-badge.priority-medio {
-  background-color: #fef3c7;
-  color: #92400e;
-}
-
-.priority-badge.priority-alto {
-  background-color: #fed7aa;
-  color: #c2410c;
-}
-
-.priority-badge.priority-muy-alto {
-  background-color: #fecaca;
-  color: #dc2626;
-}
-
-/* Estilos para campos opcionales */
-.optional-label {
-  color: #9ca3af;
-  font-weight: normal;
-  font-size: 12px;
-}
-
-/* Estilos para JIRA LINK */
-.form-error {
-  color: #ef4444;
-  font-size: 0.8rem;
-  margin-top: 0.25rem;
-}
-
-.form-hint {
-  color: #6b7280;
-  font-size: 0.75rem;
-  margin-top: 0.25rem;
-  font-style: italic;
-}
-
-.input-with-validation {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.validation-icon {
-  position: absolute;
-  right: 10px;
-  font-weight: bold;
-  pointer-events: none;
-}
-
-.validation-icon.valid {
-  color: #10b981; /* green-500 */
-}
-
-.validation-icon.invalid {
-  color: #ef4444; /* red-500 */
-}
-
-.input-error {
-  border-color: #ef4444 !important;
-  padding-right: 30px;
-}
-
-.jira-link {
-  color: #3b82f6;
-  text-decoration: none;
-  word-break: break-all;
-}
-
-.jira-link:hover {
-  text-decoration: underline;
-}
-
-.jira-link-container {
-  margin-bottom: 8px;
-}
-
-.jira-link-card {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background-color: #1e40af;
-  color: white;
-  text-decoration: none;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  transition: background-color 0.2s;
-}
-
-.jira-link-card:hover {
-  background-color: #1d4ed8;
-  color: white;
-}
-
-/* Botón de comentarios */
-.comments-button {
-  background: none;
-  border: 1px solid #d1d5db;
-  color: #6b7280;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.comments-button:hover {
-  background-color: #f3f4f6;
-  border-color: #9ca3af;
-  color: #374151;
-}
-
-.task-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Modal de comentarios */
-.comments-modal {
-  max-width: 700px;
-  max-height: 80vh;
-}
-
-.comments-modal-content {
-  padding: 0 24px 24px 24px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.comments-list {
-  max-height: 300px;
-  overflow-y: auto;
-  margin-bottom: 24px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 16px;
-}
-
-.no-comments {
-  text-align: center;
-  color: #9ca3af;
-  font-style: italic;
-  padding: 32px 16px;
-}
-
-.comment-item {
-  padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 12px;
-  border-left: 4px solid #e5e7eb;
-}
-
-.comment-item:last-child {
-  margin-bottom: 0;
-}
-
-/* Estilos para la Matriz de Eisenhower en comentarios */
-.comment-item.matrix-important-urgent {
-  border-left-color: #dc2626;
-  background-color: #fef2f2;
-}
-
-.comment-item.matrix-important-not-urgent {
-  border-left-color: #f59e0b;
-  background-color: #fffbeb;
-}
-
-.comment-item.matrix-not-important-urgent {
-  border-left-color: #3b82f6;
-  background-color: #eff6ff;
-}
-
-.comment-item.matrix-not-important-not-urgent {
-  border-left-color: #6b7280;
-}
-
-/* Estilos para el modal combinado de comentarios y vista de tarea */
-.combined-modal-overlay {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  background-color: rgba(0, 0, 0, 0.5);
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-
-.combined-modal-container {
-  position: relative;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
-  width: 90%;
-  max-width: 1400px;
-  height: 90vh;
-  max-height: 90vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.combined-close-button {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  z-index: 10;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  cursor: pointer;
-  border: none;
-  background: #ef4444;
-  color: white;
-  transition: all 0.2s ease;
-}
-
-.combined-close-button:hover {
-  background: #dc2626;
-  transform: scale(1.1);
-  box-shadow: 0 4px 8px rgba(239, 68, 68, 0.4);
-}
-
-.combined-modal-content {
-  display: flex;
-  height: 100%;
-  overflow: hidden;
-}
-
-.comments-section {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-  border-right: 1px solid #e5e7eb;
-  display: flex;
-  flex-direction: column;
-}
-
-.comments-section .comments-modal-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  max-height: none;
-}
-
-.comments-section .comments-list {
-  flex: 1;
-  max-height: none;
-  margin-bottom: 20px;
-}
-
-.task-view-section {
-  width: 400px;
-  overflow-y: auto;
-  padding: 20px;
-  background-color: #f9fafb;
-  border-left: 1px solid #e5e7eb;
-}
-
-.task-view-section .view-modal-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.view-field {
-  padding: 8px 0;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.view-field:last-child {
-  border-bottom: none;
-}
-
-.task-actions-row {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.action-button {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.edit-button {
-  background-color: #3b82f6;
-  color: white;
-}
-
-.edit-button:hover {
-  background-color: #2563eb;
-}
-
-/* Ajustes responsivos para pantallas más pequeñas */
-@media (max-width: 1024px) {
-  .combined-modal-content {
-    flex-direction: column;
-  }
-  
-  .task-view-section {
-    width: 100%;
-    border-left: none;
-    border-top: 1px solid #e5e7eb;
-  }
-  
-  .comments-section {
-    border-right: none;
-  }
-}
-
-.comment-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-  gap: 8px;
-}
-
-.comment-header-left {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-
-.comment-priority {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-weight: 500;
-}
-
-.comment-priority-important-urgent {
-  background-color: #fecaca;
-  color: #dc2626;
-}
-
-.comment-priority-important-not-urgent {
-  background-color: #fef3c7;
-  color: #92400e;
-}
-
-.comment-priority-not-important-urgent {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.comment-priority-not-important-not-urgent {
-  background-color: #f3f4f6;
-  color: #6b7280;
-}
-
-.comment-date {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.comment-completed-date {
-  font-size: 10px;
-  color: #10b981;
-  font-weight: 500;
-}
-
-.comment-actions-buttons {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.comment-action-btn {
-  background: none;
-  border: 1px solid #d1d5db;
-  color: #6b7280;
-  padding: 4px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  height: 24px;
-}
-
-.comment-action-btn:hover {
-  background-color: #f3f4f6;
-  border-color: #9ca3af;
-}
-
-.comment-action-btn.completed {
-  background-color: #10b981;
-  border-color: #10b981;
-  color: white;
-}
-
-.comment-action-btn.completed:hover {
-  background-color: #059669;
-  border-color: #059669;
-}
-
-.comment-action-btn.delete:hover {
-  background-color: #fef2f2;
-  border-color: #fca5a5;
-  color: #dc2626;
-}
-
-.comment-text {
-  color: #1e293b;
-  line-height: 1.5;
-}
-
-.comment-text.completed-text {
-  text-decoration: line-through;
-  color: #9ca3af;
-}
-
-.comment-item.comment-completed {
-  opacity: 0.7;
-  background-color: #f8f9fa !important;
-}
-
-.new-comment-form {
-  border-top: 1px solid #e5e7eb;
-  padding-top: 16px;
-}
-
-/* Matriz de Eisenhower para formulario */
-.eisenhower-matrix {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.matrix-row {
-  display: contents;
-}
-
-.matrix-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 12px;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.matrix-option:hover {
-  border-color: #9ca3af;
-  background-color: #f9fafb;
-}
-
-.matrix-option input[type="radio"] {
-  margin-top: 2px;
-}
-
-.matrix-option input[type="radio"]:checked+.matrix-label {
-  font-weight: 600;
-}
-
-.matrix-label {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.matrix-label strong {
-  font-size: 14px;
-  line-height: 1.2;
-}
-
-.matrix-label small {
-  font-size: 12px;
-  color: #6b7280;
-  font-style: italic;
-}
-
-.matrix-label.important-urgent strong {
-  color: #dc2626;
-}
-
-.matrix-label.important-not-urgent strong {
-  color: #f59e0b;
-}
-
-.matrix-label.not-important-urgent strong {
-  color: #3b82f6;
-}
-
-.matrix-label.not-important-not-urgent strong {
-  color: #6b7280;
-}
-
-.comment-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
-/* Botón de copiar JSON */
-.modal-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.copy-button {
-  padding: 6px 12px;
-  background-color: #10b981;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.copy-button:hover {
-  background-color: #059669;
-}
-
-.copy-button.copied {
-  background-color: #059669;
-  transform: scale(0.95);
-}
-
-.back-button {
-  padding: 6px 12px;
-  background-color: #6b7280;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.back-button:hover {
-  background-color: #4b5563;
-}
-
-/* Cruz de cerrar roja y bonita */
-.close-button-red {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  border: none;
-  color: white;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  font-size: 18px;
-  font-weight: bold;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
-}
-
-.close-button-red:hover {
-  background: linear-gradient(135deg, #dc2626, #b91c1c);
-  transform: scale(1.1);
-  box-shadow: 0 4px 8px rgba(239, 68, 68, 0.4);
-}
-
-.close-button-red:active {
-  transform: scale(0.95);
-}
-
-/* Modal JSON */
-.json-modal {
-  max-width: 800px;
-  max-height: 80vh;
-}
-
-.json-modal-content {
-  padding: 0 24px 24px 24px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.json-display-modal {
-  background-color: #f3f4f6;
-  padding: 16px;
-  border-radius: 8px;
-  font-size: 12px;
-  white-space: pre-wrap;
-  margin: 0;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  line-height: 1.4;
-}
-
-/* Modal más ancho */
-.modal-wide {
-  max-width: 700px;
-}
-
-/* Modal de eliminación */
-.delete-modal {
-  max-width: 450px;
-}
-
-.delete-modal-content {
-  padding: 0 24px 24px 24px;
-  text-align: center;
-}
-
-.delete-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
-
-.delete-message {
-  font-size: 16px;
-  color: #1e293b;
-  margin-bottom: 16px;
-  line-height: 1.5;
-}
-
-.warning-box {
-  background-color: #fef3c7;
-  border: 1px solid #f59e0b;
-  border-radius: 8px;
-  padding: 16px;
-  margin-top: 16px;
-  text-align: left;
-}
-
-.warning-box p {
-  margin: 0 0 8px 0;
-  color: #92400e;
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.warning-box p:last-child {
-  margin-bottom: 0;
-}
-
-.delete-button {
-  padding: 10px 20px;
-  background-color: #ef4444;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  font-weight: 500;
-}
-
-.delete-button:hover {
-  background-color: #dc2626;
-}
-
-/* Modal de visualización */
-.view-modal-content {
-  padding: 0 24px 24px 24px;
-}
-
-.view-field {
-  margin-bottom: 16px;
-  line-height: 1.5;
-}
-
-.subtasks-list {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.subtask-link {
-  align-self: flex-start;
-}
-
-/* Menú contextual */
-.context-menu {
-  position: fixed;
-  background-color: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
-  min-width: 120px;
-}
-
-.context-menu-item {
-  display: block;
-  width: 100%;
-  padding: 12px 16px;
-  text-align: left;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
-}
-
-.context-menu-item:hover {
-  background-color: #f9fafb;
-}
-
-.context-menu-item.delete:hover {
-  background-color: #fef2f2;
-  color: #dc2626;
-}
-
-/* Botones de enlace */
-.link-button {
-  background: none;
-  border: none;
-  color: #3b82f6;
-  cursor: pointer;
-  text-decoration: underline;
-  font-size: inherit;
-  padding: 0;
-  margin: 0;
-}
-
-.link-button:hover {
-  color: #1d4ed8;
-}
-
-.child-link {
-  font-size: 11px;
-  margin-right: 8px;
-}
-
-.children-links {
-  margin-top: 4px;
-  font-size: 11px;
-}
-
-/* Modal (estilos existentes) */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 20px;
-}
-
-.modal-content {
-  background-color: white;
-  border-radius: 12px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-  width: 100%;
-  max-width: 500px;
-  max-height: 90vh;
-  overflow-y: auto;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 24px 24px 0 24px;
-  border-bottom: 1px solid #e5e7eb;
-  margin-bottom: 24px;
-  position: relative;
-}
-.modal-header .close-button-red{
-  position: absolute;
-  top:0;
-  right:0;
-  margin: 10px;
-}
-
-.modal-title .priority-badge{
-  position: absolute;
-  top: 0;
-  left: 0;
-  padding: 4px 12px;
-  border-radius: 0 0 10px 0;
-  font-size: 14px;
-}
-
-.modal-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #1e293b;
-  margin: 0;
-}
-
-.modal-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 85%;
-}
-
-.modal-form {
-  padding: 0 24px 24px 24px;
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-label {
-  display: block;
-  font-size: 14px;
-  font-weight: 500;
-  color: #1e293b;
-  margin-bottom: 6px;
-}
-
-.form-input,
-.form-textarea {
-  width: 100%;
-  padding: 12px 16px;
-  border: 2px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 16px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.form-input:focus,
-.form-textarea:focus {
-  border-color: #3b82f6;
-}
-
-.form-textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-/* Select con buscador */
-.select-container {
-  position: relative;
-}
-
-.dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background-color: white;
-  border: 2px solid #d1d5db;
-  border-top: none;
-  border-radius: 0 0 8px 8px;
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 10;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.dropdown-item {
-  padding: 12px 16px;
-  cursor: pointer;
-  border-bottom: 1px solid #f3f4f6;
-  transition: background-color 0.2s;
-}
-
-.dropdown-item:hover {
-  background-color: #f9fafb;
-}
-
-.dropdown-item:last-child {
-  border-bottom: none;
-}
-
-.dropdown-item-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-  gap: 8px;
-}
-
-.dropdown-item-name {
-  font-weight: 500;
-  color: #1e293b;
-  flex: 1;
-}
-
-.dropdown-item-id {
-  font-size: 11px;
-  color: #6b7280;
-  background-color: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 8px;
-}
-
-.dropdown-item-status {
-  font-size: 12px;
-  color: #6b7280;
-  background-color: #f3f4f6;
-  padding: 2px 8px;
-  border-radius: 12px;
-}
-
-.dropdown-item-description {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.dropdown-item-empty {
-  padding: 12px 16px;
-  color: #9ca3af;
-  font-style: italic;
-  text-align: center;
-}
-
-.selected-parent {
-  margin-top: 8px;
-  padding: 8px 12px;
-  background-color: #f0f9ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
-}
-
-.clear-parent {
-  background: none;
-  border: none;
-  color: #6b7280;
-  cursor: pointer;
-  font-size: 18px;
-  padding: 0;
-  margin-left: 8px;
-}
-
-.clear-parent:hover {
-  color: #374151;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.cancel-button {
-  padding: 10px 20px;
-  background-color: #f3f4f6;
-  color: #1e293b;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.cancel-button:hover {
-  background-color: #e5e7eb;
-}
-
-.submit-button {
-  padding: 10px 20px;
-  background-color: #3b82f6;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.submit-button:hover:not(:disabled) {
-  background-color: #2563eb;
-}
-
-.submit-button:disabled {
-  background-color: #9ca3af;
-  cursor: not-allowed;
-}
-
-/* Estilos para productos múltiples */
-.product-input-container {
-  border: 2px solid #d1d5db;
-  border-radius: 8px;
-  padding: 8px;
-  background-color: white;
-  transition: border-color 0.2s;
-}
-
-.product-input-container:focus-within {
-  border-color: #3b82f6;
-}
-
-.selected-products {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.product-tag {
-  background-color: #3b82f6;
-  color: white;
-  padding: 4px 8px;
-  border-radius: 16px;
-  font-size: 12px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.remove-product {
-  background: none;
-  border: none;
-  color: white;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 0;
-  margin-left: 4px;
-  line-height: 1;
-}
-
-.remove-product:hover {
-  color: #fecaca;
-}
-
-.product-autocomplete {
-  position: relative;
-}
-
-.product-autocomplete .form-input {
-  border: none;
-  padding: 8px 0;
-  margin: 0;
-}
-
-.product-autocomplete .form-input:focus {
-  border: none;
-  outline: none;
-}
-
-.product-suggestions {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background-color: white;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  max-height: 150px;
-  overflow-y: auto;
-  z-index: 10;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.product-suggestion {
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
-  color: #1e293b;
-}
-
-.product-suggestion:hover {
-  background-color: #f9fafb;
-}
-
-.product-suggestion:last-child {
-  border-bottom: none;
-}
-
-/* Columnas - Layout optimizado para pantalla completa */
-.columns-container {
-  display: flex;
-  gap: 16px;
-  flex: 1;
-  overflow: hidden;
-  min-height: 0;
-}
-
-.column {
-  flex: 1;
-  background-color: white;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e5e7eb;
-  display: flex;
-  flex-direction: column;
-  min-width: 280px;
-  overflow: hidden;
-}
-
-.column-header {
-  padding: 16px;
-  border-bottom: 1px solid #e5e7eb;
-  flex-shrink: 0;
-}
-
-.column-title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: #1e293b;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-}
-
-.status-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-.backlog-dot {
-  background-color: #6b7280;
-}
-
-.paralyzed-dot {
-  background-color: #f59e0b;
-}
-
-.progress-dot {
-  background-color: #3b82f6;
-}
-
-.testing-dot {
-  background-color: #f97316;
-}
-
-.finalized-dot {
-  background-color: #10b981;
-}
-
-.task-count {
-  font-size: 0.875rem;
-  color: #6b7280;
-  font-weight: normal;
-}
-
-.column-content {
-  padding: 16px;
-  flex: 1;
-  overflow-y: auto;
-  transition: background-color 0.2s;
-}
-
-.column-content.drag-over {
-  background-color: #f0f9ff;
-}
-
-/* Tarjetas de tareas mejoradas */
-.task-card {
-  background-color: #f9fafb;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  margin-bottom: 12px;
-  cursor: move;
-  transition: all 0.2s;
-}
-
-.task-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.task-card:active {
-  transform: scale(0.98);
-}
-
-.task-card.highlighted {
-  border: 3px solid #ef4444 !important;
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
-  animation: pulse 1s infinite;
-}
-
-@keyframes pulse {
-
-  0%,
-  100% {
-    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
-  }
-
-  50% {
-    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
-  }
-}
-
-.backlog-card {
-  border-left: 4px solid #6b7280;
-}
-
-.paralyzed-card {
-  background-color: #fffbeb;
-  border-left: 4px solid #f59e0b;
-}
-
-.progress-card {
-  background-color: #eff6ff;
-  border-left: 4px solid #3b82f6;
-}
-
-.testing-card {
-  background-color: #fff7ed;
-  border-left: 4px solid #f97316;
-}
-
-.finalized-card {
-  background-color: #f0fdf4;
-  border-left: 4px solid #10b981;
-}
-
-.parent-task {
-  border-left-width: 6px !important;
-}
-
-.child-task {
-  margin-left: 12px;
-  border-left-style: dashed !important;
-}
-
-.task-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-}
-
-.task-title {
-  font-weight: 500;
-  color: #1e293b;
-  margin: 0;
-  font-size: 1rem;
-  flex: 1;
-}
-
-.task-badges {
-  display: flex;
-  gap: 4px;
-}
-
-.parent-badge,
-.child-badge {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.parent-badge {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.child-badge {
-  background-color: #fef3c7;
-  color: #92400e;
-}
-
-.task-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  font-size: 0.75rem;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.task-id {
-  color: #6b7280;
-  background-color: #f3f4f6;
-  padding: 2px 6px;
-  border-radius: 8px;
-}
-
-.task-product {
-  color: #3b82f6;
-  background-color: #eff6ff;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: 500;
-}
-
-.task-description {
-  font-size: 0.875rem;
-  color: #6b7280;
-  margin-bottom: 8px;
-  line-height: 1.4;
-}
-
-.parent-info,
-.children-info {
-  font-size: 0.75rem;
-  color: #6b7280;
-  margin-bottom: 8px;
-  font-style: italic;
-}
-
-.task-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.875rem;
-  color: #6b7280;
-}
-
-.empty-column {
-  text-align: center;
-  color: #9ca3af;
-  padding: 32px 16px;
-  font-style: italic;
-}
-
-/* Estilos para el árbol genealógico */
-.tree-node {
-  position: relative;
-  margin-bottom: 16px;
-}
-
-.tree-task-card {
-  background-color: white;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s;
-  max-width: 300px;
-}
-
-.tree-task-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.tree-task-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-}
-
-.tree-task-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-  margin: 0;
-  flex: 1;
-}
-
-.tree-task-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.tree-action-btn {
-  background: none;
-  border: 1px solid #d1d5db;
-  color: #6b7280;
-  padding: 2px 4px;
-  border-radius: 4px;
-  font-size: 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.tree-action-btn:hover {
-  background-color: #f3f4f6;
-  border-color: #9ca3af;
-}
-
-.tree-task-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 8px;
-  font-size: 10px;
-}
-
-.tree-task-description {
-  font-size: 12px;
-  color: #6b7280;
-  line-height: 1.4;
-}
-
-.tree-children {
-  position: relative;
-  margin-left: 20px;
-}
-
-.tree-line {
-  position: absolute;
-  left: -20px;
-  top: -8px;
-  width: 20px;
-  height: 20px;
-  border-left: 2px solid #d1d5db;
-  border-bottom: 2px solid #d1d5db;
-  border-bottom-left-radius: 8px;
-}
-
-.tree-line::before {
-  content: '';
-  position: absolute;
-  left: -2px;
-  top: 20px;
-  width: 2px;
-  height: calc(100% - 20px);
-  background-color: #d1d5db;
-}
-
-.status-badge {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.status-badge.status-backlog {
-  background-color: #f3f4f6;
-  color: #6b7280;
-}
-
-.status-badge.status-paralyzed {
-  background-color: #fef3c7;
-  color: #92400e;
-}
-
-.status-badge.status-in-progress {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.status-badge.status-testing {
-  background-color: #fed7aa;
-  color: #c2410c;
-}
-
-.status-badge.status-finalized {
-  background-color: #d1fae5;
-  color: #065f46;
-}
-
-/* Colores de tarjetas según estado */
-.tree-task-card.status-backlog {
-  border-left: 4px solid #6b7280;
-}
-
-.tree-task-card.status-paralyzed {
-  border-left: 4px solid #f59e0b;
-  background-color: #fffbeb;
-}
-
-.tree-task-card.status-in-progress {
-  border-left: 4px solid #3b82f6;
-  background-color: #eff6ff;
-}
-
-.tree-task-card.status-testing {
-  border-left: 4px solid #f97316;
-  background-color: #fff7ed;
-}
-
-.tree-task-card.status-finalized {
-  border-left: 4px solid #10b981;
-  background-color: #f0fdf4;
-}
-
-/* Responsive */
-@media (max-width: 1200px) {
-  .columns-container {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-  }
-
-  .column {
-    min-width: 300px;
-    flex-shrink: 0;
-  }
-}
-
-@media (max-width: 768px) {
-  .kanban-container {
-    padding: 16px;
-  }
-
-  .search-filters-section {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .search-container {
-    min-width: auto;
-  }
-
-  .filters-container {
-    justify-content: space-between;
-  }
-
-  .columns-container {
-    flex-direction: column;
-    overflow-y: auto;
-  }
-
-  .column {
-    min-width: auto;
-    flex-shrink: 1;
-    max-height: 400px;
-  }
-
-  .modal-overlay {
-    padding: 10px;
-  }
-
-  .modal-content {
-    max-height: 95vh;
-  }
-
-  .task-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
-  .task-badges {
-    margin-left: 0;
-  }
-
-  .modal-wide {
-    max-width: 95%;
-  }
-
-  .comments-modal {
-    max-width: 95%;
-  }
-
-  .eisenhower-matrix {
-    grid-template-columns: 1fr;
-  }
-
-  .comment-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
-  .comment-actions-buttons {
-    align-self: flex-end;
-  }
-
-  .tree-view-header {
-    flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
-  }
-
-  .tree-view-title {
-    font-size: 1.5rem;
-  }
-
-  .tree-container-main {
-    padding: 16px;
-  }
-}
+<style>
+@import './assets/css/style.css';
 </style>
